@@ -10,9 +10,9 @@ from textual.binding import Binding
 from textual import work
 import pyfiglet
 import asyncio
-from urchin import UrchinClient
+from urchin import UrchinClient, UrchinError
 import hypixel
-from hypixel import HypixelException
+from hypixel import HypixelException, PlayerNotFound
 import datetime
 from time import sleep
 import threading
@@ -28,10 +28,10 @@ class Settings:
         self.hypixel_key = os.getenv("HYPIXEL_API_KEY", default="")
         self.urchin_key = os.getenv("URCHIN_API_KEY", default="")
         self.blacklist_key = os.getenv("BLACKLIST_API_KEY", default="")
-        self.urchin_toggled = os.getenv("URCHIN_TOGGLED", default=True).strip().lower() == "true"
-        self.blacklist_toggled = os.getenv("BLACKLIST_TOGGLED", default=True).strip().lower() == "true"
+        self.urchin_toggled = os.getenv("URCHIN_TOGGLED", default="True").strip().lower() == "true"
+        self.blacklist_toggled = os.getenv("BLACKLIST_TOGGLED", default="True").strip().lower() == "true"
         self.game_path = os.getenv("GAME_PATH", default="")
-        self.completed_setup = os.getenv("COMPLETED_SETUP", default=False).strip().lower() == "true"
+        self.completed_setup = os.getenv("COMPLETED_SETUP", default="False").strip().lower() == "true"
 
 
     def set_hypixel_key(self, key):
@@ -105,6 +105,7 @@ class UI(App):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.settings = Settings()
+        self.stats = Stats()
         self.stream = ChatStream()
 
 
@@ -138,8 +139,8 @@ class UI(App):
         self.sub_title = "Overlay"
 
         table = self.query_one("#table", DataTable)
-        table.add_columns("star", "username", "fkdr", "finals", "wins", "winstreak")
-        self.watch()
+        table.add_columns("tag", "star", "username", "fkdr", "finals", "wins", "winstreak", "first login", "note")
+        self.start_stream()
 
 
     def compose(self):
@@ -233,24 +234,55 @@ class UI(App):
         self.notify(f"Toggled blacklist {"off" if event.value is False else "on"}", title="Success")
 
 
-    @work(exclusive=True, thread=True)
-    async def watch(self):
-        while True:
-            for line in await self.stream.stream():
-                # /who
-                # [02:07:43] [Client thread/INFO]: [CHAT] ONLINE: Darkqz, korokoro2022, TehMonchiooooo, AkanekoYT, cleaarly, ilias_toji, shlawg, finals2006
-                if "ONLINE: " in line:
-                    pass
-                # start of game
-                if "Protect your bed and destroy the enemy beds." in line:
-                    pass
-                # end of game
-                if "Bed Wars XP" in line:
-                    pass
-                # json for server and mode {"server":"mini115BJ","gametype":"BEDWARS","mode":"BEDWARS_EIGHT_ONE","map":"Ambush"}
-                if '{"server":' in line:
-                    pass
+    def start_stream(self):
+        self.stream_thread = threading.Thread(
+            target=self.stream.wrapper,
+            daemon=True
+        )
+        self.stream_thread.start()
+        self.set_interval(0.1, self.watch)
 
+
+    async def watch(self):
+        if not self.stream.queue.empty():
+            line = self.stream.queue.get_nowait()
+            # /who
+            # [02:07:43] [Client thread/INFO]: [CHAT] ONLINE: Darkqz, korokoro2022, TehMonchiooooo, AkanekoYT, cleaarly, ilias_toji, shlawg, finals2006
+            if "ONLINE: " in line:
+                players = [x.strip() for x in line.split(": ")[-1].split(", ")]
+                table = self.query_one("#table")
+                table.clear()
+                # "tag", "star", "username", "fkdr", "finals", "wins", "winstreak", "first login", "note"
+
+                data = await self.stats.batch_fetch_stats(players)
+                for d in data:
+                    if type(d) is str:
+                        table.add_row("nick", d)
+                        continue
+                    tag = d["blacklist_tags"] if d["blacklist_tags"] != "" else d["urchin_tags"] if (type(d["urchin_tags"] != UrchinError) and d["urchin_tags"] != "") else None
+                    reason = d["blacklist_reason"] if (d["blacklist_reason"]) != "" else d["urchin_reason"] if (type(d["urchin_reason"]) != UrchinError and d["urchin_reason"] != "") else None
+                    table.add_row(
+                            tag, 
+                            d["star"], 
+                            d["player"], 
+                            d["fkdr"], 
+                            d["fkills"], 
+                            d["wins"], 
+                            d["winstreak"],
+                            d["first_login"],
+                            reason
+                        )
+
+                
+            # start of game
+            if "Protect your bed and destroy the enemy beds." in line:
+                pass
+            # end of game
+            if "Bed Wars XP" in line:
+                pass
+            # json for server and mode {"server":"mini115BJ","gametype":"BEDWARS","mode":"BEDWARS_EIGHT_ONE","map":"Ambush"}
+            if '{"server":' in line:
+                pass
 
 
 
@@ -291,11 +323,13 @@ class Stats:
 
             
             response = await asyncio.gather(*tasks, return_exceptions=True)
+            if type(response[0]) is PlayerNotFound or type(response[0]) is TimeoutError:
+                return player
             info = {
                 "player": player,
                 "uuid": response[0].uuid,
-                "urchin_tags": response[1][0].tag_type if self.settings.urchin_toggled and self.settings.urchin_key != "" and len(response[1]) > 0 else "",
-                "urchin_reason": response[1][0].reason if self.settings.urchin_toggled and self.settings.urchin_key != "" and len(response[1]) > 0 else "",
+                "urchin_tags": response[1][0].tag_type if self.settings.urchin_toggled and self.settings.urchin_key != "" and (type(response[1]) != UrchinError and len(response[1]) > 0) else "",
+                "urchin_reason": response[1][0].reason if self.settings.urchin_toggled and self.settings.urchin_key != "" and (type(response[1]) != UrchinError and len(response[1]) > 0) else "",
                 "blacklist_tags": response[-1][0] if self.settings.blacklist_toggled else "",
                 "blacklist_reason": response[-1][1] if self.settings.blacklist_toggled else "",
                 "rank": response[0].rank,
@@ -321,9 +355,10 @@ class Stats:
 class ChatStream:
     def __init__(self):
         self.settings = Settings()
+        self.queue = queue.Queue()
 
 
-    async def stream(self):
+    def stream(self):
         path = os.path.join(self.settings.game_path, "latest.log")
         f = open(path, 'r', errors="replace", encoding="utf-8")
         f.seek(0, os.SEEK_END)
@@ -341,9 +376,15 @@ class ChatStream:
                         continue
                 except FileNotFoundError:
                     pass
-                await asyncio.sleep(0.1)
+                sleep(0.1)
         finally:
             f.close()
+
+
+    def wrapper(self):
+        for line in self.stream():
+            self.queue.put(line)
+
 
 
 class Game:
@@ -353,5 +394,6 @@ class Game:
 
 if __name__ == "__main__":
     UI().run()
-    # cs = ChatStream()
-    # asyncio.run(cs.watch())
+    # stats = Stats()
+    # r = asyncio.run(stats.batch_fetch_stats(["shlawg", "h119", "leyt"]))
+    # print(r)
