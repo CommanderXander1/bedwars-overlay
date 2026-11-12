@@ -1,11 +1,12 @@
 import httpx
 import os
-from dotenv import load_dotenv, set_key
+import json
 import platform
 from textual import on
 from textual.containers import Vertical, Horizontal, Center, Grid
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Input, Label, Button, Static, TabbedContent, TabPane, ContentSwitcher, Switch, DataTable
+from textual.screen import ModalScreen
 from textual.binding import Binding
 from textual import work
 import pyfiglet
@@ -19,74 +20,41 @@ import threading
 import queue
 
 
-load_dotenv()
-
-
 # wrapper for settings
 class Settings:
     def __init__(self):
-        self.init_env()
-        self.hypixel_key = os.getenv("HYPIXEL_API_KEY", default="")
-        self.urchin_key = os.getenv("URCHIN_API_KEY", default="")
-        self.blacklist_key = os.getenv("BLACKLIST_API_KEY", default="")
-        self.urchin_toggled = os.getenv("URCHIN_TOGGLED", default="True").strip().lower() == "true"
-        self.blacklist_toggled = os.getenv("BLACKLIST_TOGGLED", default="True").strip().lower() == "true"
-        self.game_path = os.getenv("GAME_PATH", default="")
-        self.completed_setup = os.getenv("COMPLETED_SETUP", default="False").strip().lower() == "true"
-        self.sort_by = os.getenv("SORT_BY", default="star")
+        self.file_path = os.path.join(os.getcwd(), "settings.json")
+        self.init_settings_file()
+        self.settings = self.get_settings()
 
 
-    def init_env(self):
-        pass
+    def init_settings_file(self):
+        if not os.path.isfile(self.file_path):
+            template = {
+                "api": {
+                    "hypixel": "",
+                    "urchin": "",
+                    "blacklist": ""
+                },
+                "path": "",
+                "urchin": False,
+                "blacklist": False,
+                "setup_complete": False,
+                "sort_by": "star"
+            }
+
+            with open(self.file_path, "w+") as f:
+                json.dump(template, f, indent=4)
 
 
-    def set_hypixel_key(self, key):
-        self.hypixel_key = key
-        os.environ["HYPIXEL_API_KEY"] = key
-        set_key(".env", "HYPIXEL_API_KEY", key)
+    def get_settings(self):
+        with open(self.file_path, "r") as f:
+            return json.load(f)
 
 
-    def set_urchin_key(self, key):
-        self.urchin_key = key
-        os.environ["URCHIN_API_KEY"] = key
-        set_key(".env", "URCHIN_API_KEY", key)
-
-
-    def set_blacklist_key(self, key):
-        self.blacklist_key = key
-        os.environ["BLACKLIST_API_KEY"] = key
-        set_key(".env", "BLACKLIST_API_KEY", key)
-
-
-    def set_urchin_toggled(self, key):
-        self.urchin_toggled = key
-        os.environ["URCHIN_TOGGLED"] = str(key)
-        set_key(".env", "URCHIN_TOGGLED", str(key))
-
-
-    def set_blacklist_toggled(self, key):
-        key = str(key)
-        self.blacklist_toggled = key
-        os.environ["BLACKLIST_TOGGLED"] = str(key)
-        set_key(".env", "BLACKLIST_TOGGLED", str(key))
-
-
-    def set_game_path(self, key):
-        self.game_path = key
-        os.environ["GAME_PATH"] = key
-        set_key(".env", "GAME_PATH", key)
-
-
-    def set_completed_setup(self, key):
-        self.game_path = key
-        os.environ["COMPLETED_SETUP"] = str(key)
-        set_key(".env", "COMPLETED_SETUP", str(key))
-
-
-    def set_sort_by(self, key):
-        self.sort_by = key
-        os.environ["SORT_BY"] = str(key)
-        set_key(".env", "SORT_BY", str(key))
+    def save_settings(self):
+        with open(self.file_path, "w") as f:
+            json.dump(self.settings, f, indent=4)
 
 
 
@@ -111,14 +79,57 @@ class PlayerDataTable(DataTable):
         pass
 
 
+class PlayerModal(ModalScreen):
+    def __init__(self, row):
+        super().__init__()
+        self.row = row
+
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Exit")
+    ]
+
+    CSS = """
+    PlayerModal {
+        align: center middle;
+    }
+
+    #screen {
+        width: 80%;
+        height: 80%;
+        background: $panel;
+    }
+
+    #title {
+        text-style: bold;
+        color: aqua;
+        margin: 1 2 0 2;
+    }
+
+    #tag {
+        background: $boost;
+        margin: 0 2 0 2;
+        width: auto;
+        padding: 0 1 0 1;
+    }
+    """
+
+    def compose(self):
+        yield Footer()
+        with Vertical(id="screen"):
+            yield Static(pyfiglet.figlet_format(self.row[2], font="smblock"), id="title")
+            yield Static(f"[bold][red]{self.row[0]}[/red][/bold]" if self.row[0] is not None else "no tag", id="tag")
+        
+
+
 
 # wrapper for all tui stuff
 class UI(App):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.settings = Settings()
-        self.stats = Stats()
-        self.stream = ChatStream()
+        self.stats = Stats(self.settings)
+        self.stream = ChatStream(self.settings)
 
 
     CSS = """
@@ -152,8 +163,9 @@ class UI(App):
 
         table = self.query_one("#table", DataTable)
         for col in ["tag", "star", "username", "fkdr", "finals", "wins", "winstreak", "first login", "note"]:
-            table.add_column(col, key=col)
+            table.add_column(col.strip(), key=col.strip())
         self.start_stream()
+        self.test_data()
 
 
     def compose(self):
@@ -161,7 +173,7 @@ class UI(App):
 
         yield Header(show_clock=True)
         yield Footer()
-        with TabbedContent(initial="setup" if self.settings.completed_setup is False else "overlay", id="nav"):
+        with TabbedContent(initial="setup" if self.settings.settings["setup_complete"] is False else "overlay", id="nav"):
             with TabPane("Setup", id="setup"):
                 with Vertical(id="intro-screen"):
                     with Center():
@@ -171,17 +183,17 @@ class UI(App):
             with TabPane("Settings", id="settings"):
                 with Horizontal():
                     with Vertical():
-                        yield Input(placeholder="hypixel api key", value=self.settings.hypixel_key if self.settings.hypixel_key is not None else "", id="hypixel-key", classes="input-stack")
-                        yield Input(placeholder="urchin api key", value=self.settings.urchin_key if self.settings.urchin_key is not None else "", id="urchin-key", classes="input-stack")
-                        yield Input(placeholder="blacklist api key", value=self.settings.blacklist_key if self.settings.blacklist_key is not None else "", id="blacklist-key", classes="input-stack")
+                        yield Input(placeholder="hypixel api key", value=self.settings.settings["api"]["hypixel"], id="hypixel-key", classes="input-stack")
+                        yield Input(placeholder="urchin api key", value=self.settings.settings["api"]["hypixel"], id="urchin-key", classes="input-stack")
+                        yield Input(placeholder="blacklist api key", value=self.settings.settings["api"]["blacklist"], id="blacklist-key", classes="input-stack")
                     with Vertical():
-                        yield Input(placeholder="game logs path", value=self.settings.game_path if self.settings.game_path is not None else "", id="game-path", classes="input-stack")
+                        yield Input(placeholder="game logs path", value=self.settings.settings["path"], id="game-path", classes="input-stack")
                         with Horizontal(classes="input-stack"):
                             yield Static("Urchin tags", classes="label")
-                            yield Switch(value=self.settings.urchin_toggled if self.settings.urchin_toggled is not None else True, id="urchin-toggle")
+                            yield Switch(value=self.settings.settings["urchin"], id="urchin-toggle")
                         with Horizontal(classes="input-stack"):
                             yield Static("Blacklist tags", classes="label")
-                            yield Switch(value=self.settings.blacklist_toggled if self.settings.blacklist_toggled is not None else True, id="blacklist-toggle")
+                            yield Switch(value=self.settings.settings["blacklist"], id="blacklist-toggle")
             with TabPane("Overlay", id="overlay"):
                 yield PlayerDataTable(id="table")
             with TabPane("Tag", id="tag"):
@@ -201,7 +213,8 @@ class UI(App):
         if not value:
             self.notify("Key can't be empty", title="Error", severity="error")
             return
-        self.settings.set_hypixel_key(value)
+        self.settings.settings["api"]["hypixel"] = value
+        self.settings.save_settings()
         self.notify("Hypixel API key saved", title="Success")
 
 
@@ -211,7 +224,8 @@ class UI(App):
         if not value:
             self.notify("Key can't be empty", title="Error", severity="error")
             return
-        self.settings.set_urchin_key(value)
+        self.settings.settings["api"]["urchin"] = value
+        self.settings.save_settings()
         self.notify("Urchin API key saved", title="Success")
 
 
@@ -221,7 +235,8 @@ class UI(App):
         if not value:
             self.notify("Key can't be empty", title="Error", severity="error")
             return
-        self.settings.set_blacklist_key(value)
+        self.settings.settings["api"]["blacklist"] = value
+        self.settings.save_settings()
         self.notify("Blacklist API key saved", title="Success")
 
 
@@ -231,26 +246,36 @@ class UI(App):
         if not value:
             self.notify("Key can't be empty", title="Error", severity="error")
             return
-        self.settings.set_game_path(value)
+        self.settings.settings["path"] = value
+        self.settings.save_settings()
         self.notify("Game path saved", title="Success")
 
 
     @on(Switch.Changed, "#urchin-toggle")
     def toggle_urchin(self, event):
-        self.settings.set_urchin_toggled(event.value)
+        self.settings.settings["urchin"] = bool(event.value)
+        self.settings.save_settings()
         self.notify(f"Toggled urchin {"off" if event.value is False else "on"}", title="Success")
 
 
     @on(Switch.Changed, "#blacklist-toggle")
     def toggle_blacklist(self, event):
-        self.settings.set_blacklist_toggled(event.value)
+        self.settings.settings["blacklist"] = bool(event.value)
+        self.settings.save_settings()
         self.notify(f"Toggled blacklist {"off" if event.value is False else "on"}", title="Success")
 
 
     @on(DataTable.HeaderSelected, "#table")
     def sort_table(self, event: DataTable.HeaderSelected):
-        event.data_table.sort(event.column_key)
-        self.settings.set_sort_by(event.column_key.value)
+        event.data_table.sort(event.column_key, key=self.sort_util, reverse=True)
+        self.settings.settings["sort_by"] = event.column_key.value
+        self.settings.save_settings()
+
+
+    @on(DataTable.CellSelected, "#table")
+    def player_details(self, event: DataTable.CellSelected):
+        row = self.query_one("#table").get_row(event.cell_key.row_key)
+        self.push_screen(PlayerModal(row))
 
 
     def start_stream(self):
@@ -260,6 +285,39 @@ class UI(App):
         )
         self.stream_thread.start()
         self.set_interval(0.1, self.watch)
+
+
+    def sort_util(self, x):
+        if type(x) is str:
+            try:
+                date = datetime.datetime.strptime(x, "%m/%Y")
+                return date.timestamp()
+            except Exception:
+                if x is not None:
+                    return 0
+                return -1
+        if x is None:
+            return 0
+        return x
+
+
+    @work
+    async def test_data(self):
+        table = self.query_one("#table")
+        d = await self.stats.fetch_stats("shlawg")
+        tag = d["blacklist_tags"] if d["blacklist_tags"] != "" else d["urchin_tags"] if (type(d["urchin_tags"] != UrchinError) and d["urchin_tags"] != "") else None
+        reason = d["blacklist_reason"] if (d["blacklist_reason"]) != "" else d["urchin_reason"] if (type(d["urchin_reason"]) != UrchinError and d["urchin_reason"] != "") else None
+        table.add_row(
+                tag, 
+                d["star"], 
+                d["player"], 
+                d["fkdr"], 
+                d["fkills"], 
+                d["wins"], 
+                d["winstreak"],
+                d["first_login"],
+                reason
+            )
 
 
     async def watch(self):
@@ -291,8 +349,7 @@ class UI(App):
                             d["first_login"],
                             reason
                         )
-                    table.sort(self.settings.sort_by)
-
+                    table.sort(self.settings.settings["sort_by"], key=self.sort_util, reverse=True)
                 
             # start of game
             if "Protect your bed and destroy the enemy beds." in line:
@@ -324,21 +381,21 @@ class BlacklistClient:
 
 
 class Stats:
-    def __init__(self):
+    def __init__(self, settings_obj):
         self.data = {}
         self.cache = {}
-        self.settings = Settings()
-        self.hypixel_client = hypixel.Client(self.settings.hypixel_key)
-        self.urchin_client = UrchinClient(api_key=self.settings.urchin_key) if (self.settings.urchin_key != None and self.settings.urchin_toggled) else None
-        self.blacklist_client = BlacklistClient(api_key=self.settings.blacklist_key) if (self.settings.blacklist_key != None and self.settings.blacklist_toggled) else None
+        self.settings = settings_obj
+        self.hypixel_client = hypixel.Client(self.settings.settings["api"]["hypixel"])
+        self.urchin_client = UrchinClient(api_key=self.settings.settings["api"]["urchin"]) if (self.settings.settings["api"]["urchin"] != None and self.settings.settings["urchin"]) else None
+        self.blacklist_client = BlacklistClient(api_key=self.settings.settings["api"]["blacklist"]) if (self.settings.settings["api"]["blacklist"] != None and self.settings.settings["blacklist"]) else None
 
     async def fetch_stats(self, player: str):
-        async with hypixel.Client(self.settings.hypixel_key) as h_client, UrchinClient(api_key=self.settings.urchin_key) as u_client:
+        async with hypixel.Client(self.settings.settings["api"]["hypixel"]) as h_client, UrchinClient(api_key=self.settings.settings["api"]["urchin"]) as u_client:
             tasks = [h_client.player(player)]
-            if self.settings.urchin_key != "" and self.settings.urchin_toggled:
+            if self.settings.settings["api"]["urchin"] != "" and self.settings.settings["urchin"]:
                 tasks.append(u_client.get_tags(player))
             # if self.settings.blacklist_key != "" and self.settings.blacklist_toggled:
-            if self.settings.blacklist_toggled:
+            if self.settings.settings["blacklist"]:
                 tasks.append(self.blacklist_client.fetch_player_tag(player))
 
             
@@ -348,10 +405,10 @@ class Stats:
             info = {
                 "player": player,
                 "uuid": response[0].uuid,
-                "urchin_tags": response[1][0].tag_type if self.settings.urchin_toggled and self.settings.urchin_key != "" and (type(response[1]) != UrchinError and len(response[1]) > 0) else "",
-                "urchin_reason": response[1][0].reason if self.settings.urchin_toggled and self.settings.urchin_key != "" and (type(response[1]) != UrchinError and len(response[1]) > 0) else "",
-                "blacklist_tags": response[-1][0] if self.settings.blacklist_toggled else "",
-                "blacklist_reason": response[-1][1] if self.settings.blacklist_toggled else "",
+                "urchin_tags": response[1][0].tag_type if self.settings.settings["urchin"] and self.settings.settings["api"]["urchin"] != "" and (type(response[1]) != UrchinError and len(response[1]) > 0) else "",
+                "urchin_reason": response[1][0].reason if self.settings.settings["urchin"] and self.settings.settings["api"]["urchin"] != "" and (type(response[1]) != UrchinError and len(response[1]) > 0) else "",
+                "blacklist_tags": response[-1][0] if self.settings.settings["blacklist"] else "",
+                "blacklist_reason": response[-1][1] if self.settings.settings["blacklist"] else "",
                 "rank": response[0].rank,
                 "first_login": response[0].first_login.strftime("%m/%Y"),
                 "star": response[0].bedwars.level,
@@ -363,6 +420,7 @@ class Stats:
                 "wins": response[0].bedwars.wins,
                 "winstreak": response[0].bedwars.winstreak,
             }
+            self.cache[player] = info
             return info
 
 
@@ -373,17 +431,28 @@ class Stats:
 
 
 class ChatStream:
-    def __init__(self):
-        self.settings = Settings()
+    def __init__(self, settings_obj):
+        self.settings = settings_obj
         self.queue = queue.Queue()
 
 
     def stream(self):
-        path = os.path.join(self.settings.game_path, "latest.log")
-        f = open(path, 'r', errors="replace", encoding="utf-8")
-        f.seek(0, os.SEEK_END)
+        path = None
+        f = None
         try:
             while True:
+                if path != os.path.join(self.settings.settings["path"], "latest.log"):
+                    try:
+                        new_path = os.path.join(self.settings.settings["path"], "latest.log")
+                        new = open(new_path, 'r', errors="replace", encoding="utf-8")
+                        if f:
+                            f.close()
+                        f = new
+                        f.seek(0, os.SEEK_END)
+                        path = new_path
+                    except OSError:
+                        sleep(0.1)
+                        continue
                 line = f.readline()
                 if line:
                     yield line
@@ -394,11 +463,12 @@ class ChatStream:
                         f.close()
                         f = new
                         continue
-                except FileNotFoundError:
+                except OSError:
                     pass
                 sleep(0.1)
         finally:
-            f.close()
+            if f:
+                f.close()
 
 
     def wrapper(self):
