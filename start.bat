@@ -5,6 +5,7 @@ title Overlay Launcher
 set "MAIN_SCRIPT=main.py"
 set "VENV_DIR=.venv"
 set "REQ_FILE=requirements.txt"
+set "VER_CHECK=import sys; sys.exit(0 if (3,12) <= sys.version_info[:2] <= (3,13) else 1)"
 
 set "BAR1=[####----------------]"
 set "BAR2=[########------------]"
@@ -15,27 +16,34 @@ set "BAR5=[####################]"
 cd /d "%~dp0"
 
 echo ========================================
-echo   Overlay Launcher
+echo   Overlay Launcher - by Xander
 echo ========================================
 
-call :step 1 "Checking Python"
+call :step 1 "Checking Python 3.12 / 3.13"
 set "PY_CMD="
 
-py -3 --version >nul 2>&1
+py -3.13 --version >nul 2>&1
 if not errorlevel 1 (
-    set "PY_CMD=py -3"
+    set "PY_CMD=py -3.13"
     goto :python_found
 )
 
-python --version >nul 2>&1
+py -3.12 --version >nul 2>&1
+if not errorlevel 1 (
+    set "PY_CMD=py -3.12"
+    goto :python_found
+)
+
+python -c "%VER_CHECK%" >nul 2>&1
 if not errorlevel 1 (
     set "PY_CMD=python"
     goto :python_found
 )
 
-echo   [X] Python is NOT installed or not on your PATH.
+echo   [X] Python 3.12 or 3.13 was not found.
 echo.
-echo   Please install Python from https://www.python.org/downloads/
+echo   This program only supports Python 3.12 and 3.13.
+echo   Download Python 3.13 from https://www.python.org/downloads/
 echo   During setup, tick "Add Python to PATH", then run this file again.
 echo.
 pause
@@ -43,15 +51,29 @@ exit /b 1
 
 :python_found
 for /f "delims=" %%v in ('%PY_CMD% --version') do set "PY_VER=%%v"
-echo   [OK] Python installed (%PY_VER%)
+echo   [OK] Compatible Python installed - %PY_VER%
 
 call :step 2 "Checking virtual environment"
-if exist "%VENV_DIR%\Scripts\activate.bat" (
-    echo   [OK] Virtual environment present ^(%VENV_DIR%^)
-    goto :venv_ready
-)
+if not exist "%VENV_DIR%\Scripts\python.exe" goto :create_venv
 
-echo   [..] Not found, creating "%VENV_DIR%"...
+"%VENV_DIR%\Scripts\python.exe" -c "%VER_CHECK%" >nul 2>&1
+if not errorlevel 1 goto :venv_present
+
+echo   [!] Existing venv uses an unsupported Python version, rebuilding it...
+rmdir /s /q "%VENV_DIR%"
+if exist "%VENV_DIR%\Scripts\python.exe" (
+    echo   [X] Could not delete "%VENV_DIR%". Close any program using it and try again.
+    pause
+    exit /b 1
+)
+goto :create_venv
+
+:venv_present
+echo   [OK] Virtual environment present - %VENV_DIR%
+goto :venv_ready
+
+:create_venv
+echo   [..] Creating "%VENV_DIR%" with %PY_VER%...
 %PY_CMD% -m venv "%VENV_DIR%"
 if errorlevel 1 (
     echo   [X] Failed to create the virtual environment.
@@ -88,7 +110,6 @@ echo   [OK] All requirements installed
 
 :reqs_done
 
-rem ----- Step 5: Start the program -----
 call :step 5 "Starting program"
 if not exist "%MAIN_SCRIPT%" (
     echo   [X] Could not find %MAIN_SCRIPT% in %CD%

@@ -17,6 +17,7 @@ fi
 ok()   { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$1"; }
 work() { printf '  %s…%s %s\n' "$YELLOW" "$RESET" "$1"; }
 skip() { printf '  %s–%s %s\n' "$YELLOW" "$RESET" "$1"; }
+warn() { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$1"; }
 fail() { printf '  %s✗%s %s\n' "$RED" "$RESET" "$1"; }
 
 step() {
@@ -30,46 +31,57 @@ step() {
     printf '\n%s%s%s  Step %s/%s: %s%s%s\n' "$CYAN" "$bar" "$RESET" "$n" "$TOTAL_STEPS" "$BOLD" "$title" "$RESET"
 }
 
+is_supported() {
+    "$1" -c 'import sys; sys.exit(0 if (3, 12) <= sys.version_info[:2] <= (3, 13) else 1)' >/dev/null 2>&1
+}
+
 cd "$(dirname "$0")" || exit 1
 
 echo "========================================"
-echo "  Overlay Launcher"
+echo "  Overlay Launcher - by Xander"
 echo "========================================"
 
-step 1 "Checking Python"
+step 1 "Checking Python 3.12 / 3.13"
 PY_CMD=""
-if command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
-    PY_CMD="python3"
-elif command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
-    PY_CMD="python"
-fi
+for candidate in python3.13 python3.12 python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && is_supported "$candidate"; then
+        PY_CMD="$candidate"
+        break
+    fi
+done
 
 if [ -z "$PY_CMD" ]; then
-    fail "Python is NOT installed."
+    fail "Python 3.12 or 3.13 was not found."
     echo
+    echo "  This program only supports Python 3.12 and 3.13."
     case "$(uname -s)" in
         Darwin)
-            echo "  Install it with Homebrew:  brew install python"
+            echo "  Install it with Homebrew:  brew install python@3.13"
             echo "  or download it from:       https://www.python.org/downloads/"
             ;;
         *)
             echo "  Install it with your package manager, for example:"
-            echo "    Debian/Ubuntu:  sudo apt install python3 python3-venv python3-pip"
-            echo "    Fedora:         sudo dnf install python3 python3-pip"
-            echo "    Arch:           sudo pacman -S python python-pip"
+            echo "    Ubuntu 24.04:  sudo apt install python3.12 python3.12-venv"
+            echo "    Fedora:        sudo dnf install python3.13"
+            echo "    Any distro:    pyenv install 3.13"
             ;;
     esac
     echo "  Then run this script again."
     echo
     exit 1
 fi
-ok "Python installed ($($PY_CMD --version 2>&1))"
+PY_VER=$($PY_CMD --version 2>&1)
+ok "Compatible Python installed ($PY_VER)"
 
 step 2 "Checking virtual environment"
-if [ -f "$VENV_DIR/bin/activate" ]; then
+if [ -x "$VENV_DIR/bin/python" ] && is_supported "$VENV_DIR/bin/python"; then
     ok "Virtual environment present ($VENV_DIR)"
 else
-    work "Not found, creating \"$VENV_DIR\"..."
+    if [ -e "$VENV_DIR" ]; then
+        warn "Existing venv is broken or uses an unsupported Python version, rebuilding it..."
+        rm -rf "$VENV_DIR"
+    fi
+    work "Creating \"$VENV_DIR\" with $PY_VER..."
     if ! $PY_CMD -m venv "$VENV_DIR"; then
         rm -rf "$VENV_DIR"
         fail "Failed to create the virtual environment."
