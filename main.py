@@ -3,7 +3,7 @@ import os
 import json
 import platform
 from textual import on
-from textual.containers import Vertical, Horizontal, Center, Grid
+from textual.containers import Vertical, Horizontal, Center, Grid, VerticalScroll
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Input, Label, Button, Static, TabbedContent, TabPane, ContentSwitcher, Switch, DataTable
 from textual.screen import ModalScreen
@@ -100,6 +100,7 @@ class PlayerModal(ModalScreen):
         width: 80%;
         height: 80%;
         background: $panel;
+        align: center middle;
     }
 
     #title {
@@ -117,6 +118,7 @@ class PlayerModal(ModalScreen):
 
     #stats {
         padding: 0 1 0 1;
+        margin: 1 0 1 0;
         width: 90%;
         height: 90%;
         background: $surface;
@@ -132,29 +134,72 @@ class PlayerModal(ModalScreen):
             yield Static(f"[bold][red]{self.row[0]}[/red][/bold]" if self.row[0] is not None else "no tag", id="tag")
 
             with Horizontal(id="stats"):
-                with Vertical():
-                    yield Static(f"UUID: {data["uuid"]}")
-                    yield Static(f"Rank: {data["rank"]}")
-                    yield Static(f"First login: {data["first_login"]}")
-                    yield Static(f"Level: {data["level"]}")
-                with Vertical():
-                    yield Static(f"Urchin tag: {data["urchin_tags"]}")
-                    yield Static(f"Urchin notes: {data["urchin_reason"]}")
-                    yield Static(f"Blacklist tag: {data["blacklist_tags"]}")
-                    yield Static(f"Blacklist notes: {data["blacklist_reason"]}")
-                with Vertical():
-                    yield Static(f"Star: {data["star"]}")
-                    yield Static(f"Wins: {data["wins"]}")
-                    yield Static(f"Final kills: {data["fkills"]}")
-                    yield Static(f"Beds: {data["beds"]}")
-                with Vertical():
-                    yield Static(f"FKDR: {data["fkdr"]}")
-                    yield Static(f"WLR: {data["wlr"]}")
-                    yield Static(f"BBLR: {data["bblr"]}")
-                    yield Static(f"Finals per star: {round(data["fkills"]/data["star"], 2)}")
-                    yield Static(f"Winstreak: {data["winstreak"]}")
-
-        
+                with TabbedContent():
+                    with TabPane("General"):
+                        yield Static(f"UUID: {data["uuid"]}")
+                        yield Static(f"Rank: {data["rank"]}")
+                        yield Static(f"First login: {data["first_login"]}")
+                        yield Static(f"Level: {data["level"]}")
+                    with TabPane("Tags"):
+                        yield Static(f"Urchin tag: {data["urchin_tags"] or "None"}")
+                        yield Static(f"Urchin notes: {data["urchin_reason"] or "None"}")
+                        yield Static(f"Blacklist tag: {data["blacklist_tags"] or "None"}")
+                        yield Static(f"Blacklist notes: {data["blacklist_reason"] or "None"}")
+                    with TabPane("Overall"):
+                        yield Static(f"Star: {data["star"]}")
+                        yield Static(f"Wins: {data["wins"]}")
+                        yield Static(f"Finals: {data["fkills"]}")
+                        yield Static(f"Beds: {data["beds"]}")
+                        yield Static(f"FKDR: {data["fkdr"]}")
+                        yield Static(f"WLR: {data["wlr"]}")
+                        yield Static(f"BBLR: {data["bblr"]}")
+                        yield Static(f"Finals per star: {round(data["fkills"]/data["star"], 2)}")
+                        yield Static(f"Winstreak: {data["winstreak"]}")
+                        yield Static(f"Most played: {data["most_played"]}")
+                    with TabPane("Daily"):
+                        yield Static("hi")
+                    with TabPane("Weekly"):
+                        yield Static("hi")
+                    with TabPane("Solos"):
+                        yield Static(f"Games: {data["solos"]["games"]}")
+                        yield Static(f"Wins: {data["solos"]["wins"]}")
+                        yield Static(f"Finals: {data["solos"]["fkills"]}")
+                        yield Static(f"Beds: {data["solos"]["beds"]}")
+                        yield Static(f"FKDR: {data["solos"]["fkdr"]}")
+                        yield Static(f"WLR: {data["solos"]["wlr"]}")
+                        yield Static(f"BBLR: {data["solos"]["bblr"]}")
+                        yield Static(f"Percent of finals: {data["solos"]["percent_fkills"]}")
+                        yield Static(f"Percent of wins: {data["solos"]["percent_wins"]}")
+                    with TabPane("Doubles"):
+                        yield Static(f"Games: {data["doubles"]["games"]}")
+                        yield Static(f"Wins: {data["doubles"]["wins"]}")
+                        yield Static(f"Finals: {data["doubles"]["fkills"]}")
+                        yield Static(f"Beds: {data["doubles"]["beds"]}")
+                        yield Static(f"FKDR: {data["doubles"]["fkdr"]}")
+                        yield Static(f"WLR: {data["doubles"]["wlr"]}")
+                        yield Static(f"BBLR: {data["doubles"]["bblr"]}")
+                        yield Static(f"Percent of finals: {data["doubles"]["percent_fkills"]}")
+                        yield Static(f"Percent of wins: {data["doubles"]["percent_wins"]}")
+                    with TabPane("Threes"):
+                        yield Static(f"Games: {data["threes"]["games"]}")
+                        yield Static(f"Wins: {data["threes"]["wins"]}")
+                        yield Static(f"Finals: {data["threes"]["fkills"]}")
+                        yield Static(f"Beds: {data["threes"]["beds"]}")
+                        yield Static(f"FKDR: {data["threes"]["fkdr"]}")
+                        yield Static(f"WLR: {data["threes"]["wlr"]}")
+                        yield Static(f"BBLR: {data["threes"]["bblr"]}")
+                        yield Static(f"Percent of finals: {data["threes"]["percent_fkills"]}")
+                        yield Static(f"Percent of wins: {data["threes"]["percent_wins"]}")
+                    with TabPane("Fours"):
+                        yield Static(f"Games: {data["fours"]["games"]}")
+                        yield Static(f"Wins: {data["fours"]["wins"]}")
+                        yield Static(f"Finals: {data["fours"]["fkills"]}")
+                        yield Static(f"Beds: {data["fours"]["beds"]}")
+                        yield Static(f"FKDR: {data["fours"]["fkdr"]}")
+                        yield Static(f"WLR: {data["fours"]["wlr"]}")
+                        yield Static(f"BBLR: {data["fours"]["bblr"]}")
+                        yield Static(f"Percent of finals: {data["fours"]["percent_fkills"]}")
+                        yield Static(f"Percent of wins: {data["fours"]["percent_wins"]}")
 
 
 
@@ -200,7 +245,7 @@ class UI(App):
         for col in ["tag", "star", "username", "fkdr", "finals", "wins", "winstreak", "first login", "note"]:
             table.add_column(col.strip(), key=col.strip())
         self.start_stream()
-        self.test_data()
+        # self.test_data()
 
 
     def compose(self):
@@ -437,6 +482,14 @@ class Stats:
             response = await asyncio.gather(*tasks, return_exceptions=True)
             if type(response[0]) is PlayerNotFound or type(response[0]) is TimeoutError:
                 return player
+
+            games = {
+                "solos": response[0].bedwars.solo.games, 
+                "doubles": response[0].bedwars.doubles.games,
+                "threes": response[0].bedwars.threes.games,
+                "fours": response[0].bedwars.fours.games
+            }
+            
             info = {
                 "player": player,
                 "uuid": response[0].uuid,
@@ -455,6 +508,51 @@ class Stats:
                 "beds": response[0].bedwars.beds_broken,
                 "wins": response[0].bedwars.wins,
                 "winstreak": response[0].bedwars.winstreak,
+                "most_played": f"{max(games, key=games.get)} ({max(games.values())})",
+                "solos": {
+                    "games": response[0].bedwars.solo.games,
+                    "wins": response[0].bedwars.solo.wins,
+                    "fkills": response[0].bedwars.solo.final_kills,
+                    "beds": response[0].bedwars.solo.beds_broken,
+                    "fkdr": response[0].bedwars.solo.fkdr,
+                    "wlr": response[0].bedwars.solo.wlr,
+                    "bblr": response[0].bedwars.solo.bblr,
+                    "percent_fkills": str(round(response[0].bedwars.solo.final_kills/response[0].bedwars.final_kills * 100)) + "%",
+                    "percent_wins": str(round(response[0].bedwars.solo.wins/response[0].bedwars.wins * 100)) + "%"
+                },
+                "doubles": {
+                    "games": response[0].bedwars.doubles.games,
+                    "wins": response[0].bedwars.doubles.wins,
+                    "fkills": response[0].bedwars.doubles.final_kills,
+                    "beds": response[0].bedwars.doubles.beds_broken,
+                    "fkdr": response[0].bedwars.doubles.fkdr,
+                    "wlr": response[0].bedwars.doubles.wlr,
+                    "bblr": response[0].bedwars.doubles.bblr,
+                    "percent_fkills": str(round(response[0].bedwars.doubles.final_kills/response[0].bedwars.final_kills * 100)) + "%",
+                    "percent_wins": str(round(response[0].bedwars.doubles.wins/response[0].bedwars.wins * 100)) + "%"
+                },
+                "threes": {
+                    "games": response[0].bedwars.threes.games,
+                    "wins": response[0].bedwars.threes.wins,
+                    "fkills": response[0].bedwars.threes.final_kills,
+                    "beds": response[0].bedwars.threes.beds_broken,
+                    "fkdr": response[0].bedwars.threes.fkdr,
+                    "wlr": response[0].bedwars.threes.wlr,
+                    "bblr": response[0].bedwars.threes.bblr,
+                    "percent_fkills": str(round(response[0].bedwars.threes.final_kills/response[0].bedwars.final_kills * 100)) + "%",
+                    "percent_wins": str(round(response[0].bedwars.threes.wins/response[0].bedwars.wins * 100)) + "%"
+                },
+                "fours": {
+                    "games": response[0].bedwars.fours.games,
+                    "wins": response[0].bedwars.fours.wins,
+                    "fkills": response[0].bedwars.fours.final_kills,
+                    "beds": response[0].bedwars.fours.beds_broken,
+                    "fkdr": response[0].bedwars.fours.fkdr,
+                    "wlr": response[0].bedwars.fours.wlr,
+                    "bblr": response[0].bedwars.fours.bblr,
+                    "percent_fkills": str(round(response[0].bedwars.fours.final_kills/response[0].bedwars.final_kills * 100)) + "%",
+                    "percent_wins": str(round(response[0].bedwars.fours.wins/response[0].bedwars.wins * 100)) + "%"
+                }
             }
             self.cache[player] = info
             return info
@@ -520,6 +618,4 @@ class Game:
 
 if __name__ == "__main__":
     UI().run()
-    # stats = Stats()
-    # r = asyncio.run(stats.batch_fetch_stats(["shlawg", "h119", "leyt"]))
-    # print(r)
+    
