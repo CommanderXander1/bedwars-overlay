@@ -25,6 +25,7 @@ load_dotenv()
 # wrapper for settings
 class Settings:
     def __init__(self):
+        self.init_env()
         self.hypixel_key = os.getenv("HYPIXEL_API_KEY", default="")
         self.urchin_key = os.getenv("URCHIN_API_KEY", default="")
         self.blacklist_key = os.getenv("BLACKLIST_API_KEY", default="")
@@ -32,6 +33,11 @@ class Settings:
         self.blacklist_toggled = os.getenv("BLACKLIST_TOGGLED", default="True").strip().lower() == "true"
         self.game_path = os.getenv("GAME_PATH", default="")
         self.completed_setup = os.getenv("COMPLETED_SETUP", default="False").strip().lower() == "true"
+        self.sort_by = os.getenv("SORT_BY", default="star")
+
+
+    def init_env(self):
+        pass
 
 
     def set_hypixel_key(self, key):
@@ -75,6 +81,12 @@ class Settings:
         self.game_path = key
         os.environ["COMPLETED_SETUP"] = str(key)
         set_key(".env", "COMPLETED_SETUP", str(key))
+
+
+    def set_sort_by(self, key):
+        self.sort_by = key
+        os.environ["SORT_BY"] = str(key)
+        set_key(".env", "SORT_BY", str(key))
 
 
 
@@ -139,7 +151,8 @@ class UI(App):
         self.sub_title = "Overlay"
 
         table = self.query_one("#table", DataTable)
-        table.add_columns("tag", "star", "username", "fkdr", "finals", "wins", "winstreak", "first login", "note")
+        for col in ["tag", "star", "username", "fkdr", "finals", "wins", "winstreak", "first login", "note"]:
+            table.add_column(col, key=col)
         self.start_stream()
 
 
@@ -234,6 +247,12 @@ class UI(App):
         self.notify(f"Toggled blacklist {"off" if event.value is False else "on"}", title="Success")
 
 
+    @on(DataTable.HeaderSelected, "#table")
+    def sort_table(self, event: DataTable.HeaderSelected):
+        event.data_table.sort(event.column_key)
+        self.settings.set_sort_by(event.column_key.value)
+
+
     def start_stream(self):
         self.stream_thread = threading.Thread(
             target=self.stream.wrapper,
@@ -257,7 +276,7 @@ class UI(App):
                 data = await self.stats.batch_fetch_stats(players)
                 for d in data:
                     if type(d) is str:
-                        table.add_row("nick", d)
+                        table.add_row("nick", None, d)
                         continue
                     tag = d["blacklist_tags"] if d["blacklist_tags"] != "" else d["urchin_tags"] if (type(d["urchin_tags"] != UrchinError) and d["urchin_tags"] != "") else None
                     reason = d["blacklist_reason"] if (d["blacklist_reason"]) != "" else d["urchin_reason"] if (type(d["urchin_reason"]) != UrchinError and d["urchin_reason"] != "") else None
@@ -272,6 +291,7 @@ class UI(App):
                             d["first_login"],
                             reason
                         )
+                    table.sort(self.settings.sort_by)
 
                 
             # start of game
