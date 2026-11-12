@@ -80,13 +80,15 @@ class PlayerDataTable(DataTable):
 
 
 class PlayerModal(ModalScreen):
-    def __init__(self, row):
+    def __init__(self, row, stats):
         super().__init__()
         self.row = row
+        self.stats = stats
 
 
     BINDINGS = [
-        Binding("escape", "dismiss", "Exit")
+        Binding("escape", "dismiss", "Exit"),
+        Binding("t", "tag", "Update tag")
     ]
 
     CSS = """
@@ -112,13 +114,46 @@ class PlayerModal(ModalScreen):
         width: auto;
         padding: 0 1 0 1;
     }
+
+    #stats {
+        padding: 0 1 0 1;
+        width: 90%;
+        height: 90%;
+        background: $surface;
+        align: center middle;
+    }
     """
 
     def compose(self):
+        data = self.stats.cache[self.row[2]]
         yield Footer()
         with Vertical(id="screen"):
-            yield Static(pyfiglet.figlet_format(self.row[2], font="smblock"), id="title")
+            yield Static(pyfiglet.figlet_format(self.row[2], font="pagga"), id="title")
             yield Static(f"[bold][red]{self.row[0]}[/red][/bold]" if self.row[0] is not None else "no tag", id="tag")
+
+            with Horizontal(id="stats"):
+                with Vertical():
+                    yield Static(f"UUID: {data["uuid"]}")
+                    yield Static(f"Rank: {data["rank"]}")
+                    yield Static(f"First login: {data["first_login"]}")
+                    yield Static(f"Level: {data["level"]}")
+                with Vertical():
+                    yield Static(f"Urchin tag: {data["urchin_tags"]}")
+                    yield Static(f"Urchin notes: {data["urchin_reason"]}")
+                    yield Static(f"Blacklist tag: {data["blacklist_tags"]}")
+                    yield Static(f"Blacklist notes: {data["blacklist_reason"]}")
+                with Vertical():
+                    yield Static(f"Star: {data["star"]}")
+                    yield Static(f"Wins: {data["wins"]}")
+                    yield Static(f"Final kills: {data["fkills"]}")
+                    yield Static(f"Beds: {data["beds"]}")
+                with Vertical():
+                    yield Static(f"FKDR: {data["fkdr"]}")
+                    yield Static(f"WLR: {data["wlr"]}")
+                    yield Static(f"BBLR: {data["bblr"]}")
+                    yield Static(f"Finals per star: {round(data["fkills"]/data["star"], 2)}")
+                    yield Static(f"Winstreak: {data["winstreak"]}")
+
         
 
 
@@ -275,7 +310,7 @@ class UI(App):
     @on(DataTable.CellSelected, "#table")
     def player_details(self, event: DataTable.CellSelected):
         row = self.query_one("#table").get_row(event.cell_key.row_key)
-        self.push_screen(PlayerModal(row))
+        self.push_screen(PlayerModal(row, self.stats))
 
 
     def start_stream(self):
@@ -405,6 +440,7 @@ class Stats:
             info = {
                 "player": player,
                 "uuid": response[0].uuid,
+                "level": response[0].level,
                 "urchin_tags": response[1][0].tag_type if self.settings.settings["urchin"] and self.settings.settings["api"]["urchin"] != "" and (type(response[1]) != UrchinError and len(response[1]) > 0) else "",
                 "urchin_reason": response[1][0].reason if self.settings.settings["urchin"] and self.settings.settings["api"]["urchin"] != "" and (type(response[1]) != UrchinError and len(response[1]) > 0) else "",
                 "blacklist_tags": response[-1][0] if self.settings.settings["blacklist"] else "",
